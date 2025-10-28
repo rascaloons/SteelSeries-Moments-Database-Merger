@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steelseries Moments DB Merger</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-asm.js"
+        xintegrity="sha512-O8PUHWAiYK/FjV/AJy/b/nS+9/2/o/o6t3P/3/1f1/aTAnj1j/v/3VagV/91/Tj/1/4/2/4/w=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <style>
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .spinner {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans p-6 md:p-12">
+
+    <div class="max-w-3xl mx-auto bg-gray-800 rounded-lg shadow-xl p-6 md:p-8">
+
+        <header class="mb-6 border-b border-gray-700 pb-4">
+            <h1 class="text-3xl font-bold text-white">Steelseries Moments Database Merger</h1>
+            <p class="text-gray-400 mt-2">Merge your old Moments database into your new one.</p>
+        </header>
+
+        <main>
+            <div class="mb-6 p-4 bg-blue-900/30 border border-blue-600 rounded-lg text-blue-200">
+                <h2 class="font-bold text-lg mb-2">How to Use:</h2>
+                <ol class="list-decimal list-inside space-y-2">
+                    <li>
+                        Close the Steelseries GG app completely (right-click its icon in your system tray and choose "Exit").
+                    </li>
+                    <li>
+                        Find your <strong>NEW (current)</strong> database file. It's usually located at: <br>
+                        <code class="bg-gray-700 px-1 rounded text-xs">C:\ProgramData\SteelSeries\GG\apps\moments\db\database.db</code>
+                    </li>
+                     <li>
+                        <strong>IMPORTANT:</strong> Make a backup copy of this file and your <strong>OLD</strong> database file before you begin.
+                    </li>
+                    <li>
+                        Select your <strong>OLD (backup)</strong> database file as the "1. Base Database". This will be the starting point.
+                    </li>
+                    <li>
+                        Select your <strong>NEW (current)</strong> database file (from Step 2) as the "2. Appended Database". This one will be added to the end.
+                    </li>
+                    <li>
+                        The table name should be <code class="bg-gray-700 px-1 rounded">moments_clips</code>. (This is set by default).
+                    </li>
+                    <li>
+                        Click "Merge Databases" and wait for the success message.
+                    </li>
+                    <li>
+                        A new file named <code class="bg-gray-700 px-1 rounded">database.db</code> will be downloaded.
+                    </li>
+                    <li>
+                        Replace your <strong>NEW (current)</strong> database file (the one at the path in Step 2) with the <code class="bg-gray-700 px-1 rounded">database.db</code> file you just downloaded.
+                    </li>
+                    <li>
+                        Start the Steelseries GG app. Your old clips should now appear alongside your new ones!
+                    </li>
+                </ol>
+            </div>
+
+            <div class="space-y-6">
+                <div>
+                    <label for="new-db" class="block text-sm font-medium text-gray-300 mb-2">1. Base Database (Your OLD backup file)</label>
+                    <input type="file" id="new-db" class="block w-full text-sm text-gray-400
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-lg file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-600 file:text-white
+                        hover:file:bg-blue-700"
+                        accept=".db"
+                    />
+                </div>
+
+                <div>
+                    <label for="old-db" class="block text-sm font-medium text-gray-300 mb-2">2. Appended Database (Your NEW current file)</label>
+                    <input type="file" id="old-db" class="block w-full text-sm text-gray-400
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-lg file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-green-600 file:text-white
+                        hover:file:bg-green-700"
+                        accept=".db"
+                    />
+                </div>
+
+                <div>
+                    <label for="table-name" class="block text-sm font-medium text-gray-300 mb-2">3. Moments Table Name (Default: "moments_clips")</label>
+                    <input 
+                        type="text" 
+                        id="table-name" 
+                        value="moments_clips" 
+                        class="block w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="e.g., moments_clips"
+                    />
+                </div>
+            </div>
+
+            <div class="mt-8 text-center">
+                <button id="merge-btn" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+                    Merge Databases
+                </button>
+            </div>
+
+            <div id="status" class="mt-6 p-4 bg-gray-900 border border-gray-700 rounded-lg min-h-[100px] whitespace-pre-wrap font-mono text-sm hidden">
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const newDbInput = document.getElementById('new-db');
+        const oldDbInput = document.getElementById('old-db');
+        const tableNameInput = document.getElementById('table-name');
+        const mergeBtn = document.getElementById('merge-btn');
+        const statusEl = document.getElementById('status');
+        let sql = null;
+
+        function log(message, isError = false) {
+            statusEl.classList.remove('hidden');
+            const line = document.createElement('div');
+            line.textContent = `> ${message}`;
+            if (isError) {
+                line.classList.add('text-red-400');
+            } else {
+                line.classList.add('text-green-400');
+            }
+            statusEl.appendChild(line);
+            statusEl.scrollTop = statusEl.scrollHeight;
+        }
+
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(new Uint8Array(reader.result));
+                reader.onerror = () => reject(reader.error);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function downloadDatabase(db) {
+            const data = db.export();
+            const blob = new Blob([data], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'database.db';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            log('Success: "database.db" has been downloaded.');
+            log('Please follow steps 9 and 10 in the instructions above.');
+        }
+
+        async function handleMerge() {
+            mergeBtn.disabled = true;
+            mergeBtn.textContent = 'Merging...';
+            statusEl.innerHTML = '';
+            statusEl.classList.add('hidden');
+
+            try {
+                if (!newDbInput.files[0] || !oldDbInput.files[0]) {
+                    throw new Error('Please select both a new and old database file.');
+                }
+                const tableName = tableNameInput.value.trim();
+                if (!tableName) {
+                    throw new Error('Please enter the table name for clips.');
+                }
+                log('Inputs validated. Starting merge...');
+
+                if (!sql) {
+                    log('Initializing SQL.js... (this may take a moment)');
+                    sql = await initSqlJs({
+                        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                    });
+                    log('SQL.js initialized.');
+                }
+
+                log('Reading database files...');
+                const newDbData = await readFileAsArrayBuffer(newDbInput.files[0]);
+                const oldDbData = await readFileAsArrayBuffer(oldDbInput.files[0]);
+
+                const newDb = new sql.Database(newDbData);
+                const oldDb = new sql.Database(oldDbData);
+                log('Databases loaded into memory.');
+
+                log(`Querying old database table: "${tableName}"...`);
+                let oldClips = [];
+                try {
+                    const res = oldDb.exec(`SELECT * FROM ${tableName}`);
+                    if (!res[0]) {
+                        throw new Error(`Table "${tableName}" might be empty or not exist in the old DB.`);
+                    }
+                    const columns = res[0].columns;
+                    const values = res[0].values;
+                    
+                    oldClips = values.map(row => {
+                        const clip = {};
+                        columns.forEach((col, i) => {
+                            clip[col] = row[i];
+                        });
+                        return clip;
+                    });
+                    
+                    log(`Found ${oldClips.length} clip(s) in old database.`);
+                    if (oldClips.length === 0) {
+                        throw new Error("No clips found in the old database. Nothing to merge.");
+                    }
+                } catch (e) {
+                    throw new Error(`Failed to read from table "${tableName}" in OLD database. Is the table name correct? Error: ${e.message}`);
+                }
+                
+                let newColumns = [];
+                let primaryKey = null;
+                try {
+                    const info = newDb.exec(`PRAGMA table_info(${tableName})`);
+                    if (!info[0]) {
+                         throw new Error(`Table "${tableName}" not found in NEW database.`);
+                    }
+                    info[0].values.forEach(col => {
+                        newColumns.push(col[1]);
+                        if (col[5] === 1) {
+                            primaryKey = col[1];
+                        }
+                    });
+                    log(`Analyzed new DB schema. Primary key identified: "${primaryKey}"`);
+                } catch(e) {
+                     throw new Error(`Failed to read from table "${tableName}" in NEW database. Is the table name correct? Error: ${e.message}`);
+                }
+
+                log('Starting import into new database...');
+                let importedCount = 0;
+                let skippedCount = 0;
+
+                const insertCols = newColumns;
+                const colNames = insertCols.join(', ');
+                const colParams = insertCols.map(() => '?').join(', ');
+                
+                const stmt = newDb.prepare(`INSERT INTO ${tableName} (${colNames}) VALUES (${colParams})`);
+                log(`Prepared insert statement. Will attempt to insert all columns including Primary Key.`);
+                
+                for (const clip of oldClips) {
+                    const values = [];
+                    let canInsert = true;
+                    for (const col of insertCols) {
+                        if (clip.hasOwnProperty(col)) {
+                            values.push(clip[col]);
+                        } else {
+                            values.push(null);
+                            log(`Warning: Old clip missing column "${col}". Defaulting to NULL.`, true);
+                        }
+                    }
+
+                    try {
+                        stmt.run(values);
+                        importedCount++;
+                    } catch (e) {
+                        const clipId = clip[primaryKey] || 'unknown_id';
+                        const clipName = clip['name'] || 'unknown_name';
+                        
+                        let errorMessage = e.message;
+                        if (e.message.includes('UNIQUE constraint failed')) {
+                            errorMessage = 'Clip is a duplicate (ID already exists).';
+                        }
+
+                        log(`Skipped clip (ID: ${clipId}, Name: ${clipName}). Reason: ${errorMessage}`, true);
+                        skippedCount++;
+                    }
+                }
+                
+                stmt.free();
+
+                log('--- Merge Complete ---');
+                log(`Successfully imported: ${importedCount} clip(s)`);
+                log(`Skipped (duplicates/errors): ${skippedCount} clip(s)`);
+
+                downloadDatabase(newDb);
+
+                newDb.close();
+                oldDb.close();
+
+            } catch (err) {
+                log(`FATAL ERROR: ${err.message}`, true);
+                log('Please check your file selections and table name.', true);
+            } finally {
+                mergeBtn.disabled = false;
+                mergeBtn.textContent = 'Merge Databases';
+            }
+        }
+
+        mergeBtn.addEventListener('click', handleMerge);
+
+    </script>
+</body>
+</html>
